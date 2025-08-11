@@ -21,6 +21,7 @@ from src.core.logging import get_logger, setup_logging
 from src.core.middleware import LoggingMiddleware
 from src.core.metrics import service_registry, get_metrics_collector
 from src.core.background_metrics import start_background_metrics, stop_background_metrics
+from src.core.events import get_event_service, close_event_service
 
 # Setup logging
 setup_logging(
@@ -53,6 +54,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Background metrics collection started")
     except Exception as e:
         logger.error("Failed to start background metrics", error=str(e))
+    
+    # Initialize event service if enabled
+    if settings.events_enabled:
+        try:
+            await get_event_service()
+            logger.info("Event service initialized (logging mode)")
+        except Exception as e:
+            logger.error("Failed to initialize event service", error=str(e))
 
     yield
 
@@ -65,6 +74,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Background metrics collection stopped")
     except Exception as e:
         logger.error("Failed to stop background metrics", error=str(e))
+    
+    # Close event service
+    if settings.events_enabled:
+        try:
+            await close_event_service()
+            logger.info("Event service closed (logging mode)")
+        except Exception as e:
+            logger.error("Failed to close event service", error=str(e))
         
     if settings.database_url:
         await close_db()

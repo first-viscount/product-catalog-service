@@ -28,4 +28,6 @@ prometheus-client==0.22.1
 prometheus-fastapi-instrumentator==7.0.0
 
 # Future dependencies (uncomment when needed)
+# aiokafka==0.8.11  # For event streaming in Phase 2
+# tenacity==8.4.0   # For retry logic in Phase 2
 # redis==5.2.1

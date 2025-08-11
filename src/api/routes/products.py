@@ -15,6 +15,8 @@ from src.api.models.product import (
 )
 from src.core.database import get_db
 from src.core.logging import get_logger
+from src.core.events import get_event_service
+from src.core.config import settings
 from src.repositories.product import ProductRepository
 
 logger = get_logger(__name__)
@@ -47,6 +49,26 @@ async def create_product(
     try:
         product = await repo.create(**product_data.model_dump())
         logger.info("Product created", product_id=str(product.id), name=product.name)
+        
+        # Publish ProductCreated event if events are enabled
+        if settings.events_enabled:
+            try:
+                event_service = await get_event_service()
+                await event_service.publish_product_created(
+                    product_id=str(product.id),
+                    name=product.name,
+                    description=product.description,
+                    category_id=str(product.category_id),
+                    price=product.price,
+                    sku=product.sku,
+                    is_active=product.is_active,
+                    attributes=product.attributes
+                )
+            except Exception as event_error:
+                # Log but don't fail the request
+                logger.warning("Failed to publish ProductCreated event", 
+                             product_id=str(product.id), error=str(event_error))
+        
         return Product.model_validate(product)
     except Exception as e:
         logger.error("Failed to create product", error=str(e))
@@ -265,6 +287,14 @@ async def update_product(
                 detail="No update data provided"
             )
         
+        # Get original product for comparison
+        original_product = await repo.get(product_id)
+        if not original_product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Product not found"
+            )
+        
         product = await repo.update(product_id, **update_data)
         if not product:
             raise HTTPException(
@@ -273,6 +303,43 @@ async def update_product(
             )
         
         logger.info("Product updated", product_id=str(product_id))
+        
+        # Publish events if events are enabled
+        if settings.events_enabled:
+            try:
+                event_service = await get_event_service()
+                
+                # Check if price changed
+                if "price" in update_data and original_product.price != product.price:
+                    await event_service.publish_price_changed(
+                        product_id=str(product.id),
+                        old_price=original_product.price,
+                        new_price=product.price
+                    )
+                
+                # Publish general product updated event
+                changes = [
+                    {"field": field, "old_value": getattr(original_product, field), "new_value": value}
+                    for field, value in update_data.items()
+                    if getattr(original_product, field) != value
+                ]
+                
+                await event_service.publish_product_updated(
+                    product_id=str(product.id),
+                    name=product.name,
+                    description=product.description,
+                    category_id=str(product.category_id),
+                    price=product.price,
+                    sku=product.sku,
+                    is_active=product.is_active,
+                    attributes=product.attributes,
+                    changes=changes
+                )
+            except Exception as event_error:
+                # Log but don't fail the request
+                logger.warning("Failed to publish product update events", 
+                             product_id=str(product.id), error=str(event_error))
+        
         return Product.model_validate(product)
     except HTTPException:
         raise
@@ -307,6 +374,11 @@ async def delete_product(
     repo = ProductRepository(db)
     
     try:
+        # Get product details before deletion for event
+        product_to_delete = None
+        if settings.events_enabled:
+            product_to_delete = await repo.get(product_id)
+        
         success = await repo.delete(product_id)
         if not success:
             raise HTTPException(
@@ -315,6 +387,20 @@ async def delete_product(
             )
         
         logger.info("Product deleted", product_id=str(product_id))
+        
+        # Publish ProductDeleted event if events are enabled
+        if settings.events_enabled and product_to_delete:
+            try:
+                event_service = await get_event_service()
+                await event_service.publish_product_deleted(
+                    product_id=str(product_id),
+                    name=product_to_delete.name,
+                    reason="manual_deletion"
+                )
+            except Exception as event_error:
+                # Log but don't fail the request
+                logger.warning("Failed to publish ProductDeleted event", 
+                             product_id=str(product_id), error=str(event_error))
     except HTTPException:
         raise
     except Exception as e:

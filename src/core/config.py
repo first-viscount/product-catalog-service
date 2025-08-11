@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 
     # Platform coordination
     platform_coordination_url: str = "http://localhost:8081"
+    
+    # Event logging (for Phase 1 MVP - events are logged, not published)
+    events_enabled: bool = True  # Enable/disable event logging
 
 
 settings = Settings()
