@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # Add alerting rules here if needed
+
+scrape_configs:
+  - job_name: 'product-catalog-service'
+    static_configs:
+      - targets: ['product-catalog-service:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

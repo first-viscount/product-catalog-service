@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  product-catalog-service:
+    build: .
+    container_name: product-catalog-service
+    ports:
+      - "8082:8082"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://catalog_user:catalog_dev_password@product-catalog-db:5432/product_catalog_db
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+      - CORS_ORIGINS=["http://localhost:3000"]
+    depends_on:
+      product-catalog-db:
+        condition: service_healthy
+    networks:
+      - product-catalog-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  product-catalog-db:
+    image: postgres:16-alpine
+    container_name: product-catalog-db
+    environment:
+      - POSTGRES_DB=product_catalog_db
+      - POSTGRES_USER=catalog_user
+      - POSTGRES_PASSWORD=catalog_dev_password
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - product_catalog_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5433:5432"  # Different port to avoid conflict with coordination service
+    networks:
+      - product-catalog-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog_user -d product_catalog_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: product-catalog-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9091:9090"  # Different port to avoid conflict
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - product-catalog-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: product-catalog-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"  # Different port to avoid conflict
+    networks:
+      - product-catalog-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  product_catalog_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  product-catalog-network:
+    driver: bridge
