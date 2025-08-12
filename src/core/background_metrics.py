@@ -2,12 +2,12 @@
 
 import asyncio
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from src.core.database import get_db_context
-from src.core.logging import get_logger
-from src.core.metrics import get_metrics_collector
-from src.models.product import Product, Category
+from ..models.product import Category, Product
+from .database import get_db_context
+from .logging import get_logger
+from .metrics import get_metrics_collector
 
 logger = get_logger(__name__)
 
@@ -17,7 +17,7 @@ class BackgroundMetricsUpdater:
 
     def __init__(self, update_interval: int = 30) -> None:
         """Initialize the background metrics updater.
-        
+
         Args:
             update_interval: Interval in seconds between metric updates
         """
@@ -31,7 +31,7 @@ class BackgroundMetricsUpdater:
         if self._running:
             logger.warning("Background metrics updater is already running")
             return
-            
+
         self._running = True
         self._task = asyncio.create_task(self._update_loop())
         logger.info("Background metrics updater started", interval=self.update_interval)
@@ -55,8 +55,8 @@ class BackgroundMetricsUpdater:
                 await asyncio.sleep(self.update_interval)
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.error("Error updating background metrics", error=str(e))
+            except Exception:
+                logger.exception("Error updating background metrics")
                 await asyncio.sleep(self.update_interval)
 
     async def _update_catalog_metrics(self) -> None:
@@ -67,22 +67,22 @@ class BackgroundMetricsUpdater:
                 product_count_stmt = select(func.count(Product.id))
                 product_result = await session.execute(product_count_stmt)
                 total_products = product_result.scalar_one()
-                
+
                 # Count total categories
                 category_count_stmt = select(func.count(Category.id))
                 category_result = await session.execute(category_count_stmt)
                 total_categories = category_result.scalar_one()
-                
+
                 # Update catalog metrics (these would be defined in metrics.py)
                 # For now, just log the counts
                 logger.debug(
-                    "Updated catalog metrics", 
+                    "Updated catalog metrics",
                     total_products=total_products,
-                    total_categories=total_categories
+                    total_categories=total_categories,
                 )
-                    
-        except Exception as e:
-            logger.error("Failed to update catalog metrics", error=str(e))
+
+        except Exception:
+            logger.exception("Failed to update catalog metrics")
 
 
 # Global instance

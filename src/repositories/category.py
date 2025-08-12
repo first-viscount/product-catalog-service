@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models.product import Category
-from src.repositories.base import BaseRepository
+from ..models.product import Category
+from .base import BaseRepository
 
 
 class CategoryRepository(BaseRepository[Category]):
@@ -23,7 +23,7 @@ class CategoryRepository(BaseRepository[Category]):
     async def create(self, **kwargs: Any) -> Category:
         """Create a new category."""
         category = Category(**kwargs)
-        
+
         # Generate path based on parent
         if category.parent_id:
             parent = await self.get(category.parent_id)
@@ -33,7 +33,7 @@ class CategoryRepository(BaseRepository[Category]):
                 raise ValueError("Parent category not found")
         else:
             category.path = category.name
-        
+
         self.session.add(category)
         await self.session.flush()
         await self.session.refresh(category)
@@ -109,9 +109,7 @@ class CategoryRepository(BaseRepository[Category]):
     async def list_root_categories(self) -> list[Category]:
         """List root categories (no parent)."""
         stmt = (
-            select(Category)
-            .where(Category.parent_id.is_(None))
-            .order_by(Category.name)
+            select(Category).where(Category.parent_id.is_(None)).order_by(Category.name)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

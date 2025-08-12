@@ -1,19 +1,20 @@
 """Category management endpoints."""
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.models.product import (
+from ...core.database import get_db
+from ...core.logging import get_logger
+from ...repositories.category import CategoryRepository
+from ..models.product import (
     Category,
     CategoryCreate,
     CategoryUpdate,
     CategoryWithChildren,
 )
-from src.core.database import get_db
-from src.core.logging import get_logger
-from src.repositories.category import CategoryRepository
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -39,26 +40,28 @@ The path will be automatically generated based on the hierarchy.
 )
 async def create_category(
     category_data: CategoryCreate,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Category:
     """Create a new category."""
     repo = CategoryRepository(db)
-    
+
     try:
         category = await repo.create(**category_data.model_dump())
-        logger.info("Category created", category_id=str(category.id), name=category.name)
+        logger.info(
+            "Category created", category_id=str(category.id), name=category.name,
+        )
         return Category.model_validate(category)
     except ValueError as e:
         logger.warning("Category creation failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            detail=str(e),
         )
-    except Exception as e:
-        logger.error("Failed to create category", error=str(e))
+    except Exception:
+        logger.exception("Failed to create category")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create category"
+            detail="Failed to create category",
         )
 
 
@@ -78,27 +81,29 @@ Use name to search for categories by name (partial match).
     },
 )
 async def list_categories(
+    db: Annotated[AsyncSession, Depends(get_db)],
     parent_id: UUID | None = Query(None, description="Filter by parent category ID"),
-    name: str | None = Query(None, description="Filter by category name (partial match)"),
-    db: AsyncSession = Depends(get_db),
+    name: str | None = Query(
+        None, description="Filter by category name (partial match)",
+    ),
 ) -> list[Category]:
     """List categories with optional filters."""
     repo = CategoryRepository(db)
-    
+
     try:
         filters = {}
         if parent_id:
             filters["parent_id"] = parent_id
         if name:
             filters["name"] = name
-            
+
         categories = await repo.list(**filters)
         return [Category.model_validate(cat) for cat in categories]
-    except Exception as e:
-        logger.error("Failed to list categories", error=str(e))
+    except Exception:
+        logger.exception("Failed to list categories")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list categories"
+            detail="Failed to list categories",
         )
 
 
@@ -115,19 +120,19 @@ Get all root categories (categories without a parent).
     },
 )
 async def list_root_categories(
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[Category]:
     """List root categories."""
     repo = CategoryRepository(db)
-    
+
     try:
         categories = await repo.list_root_categories()
         return [Category.model_validate(cat) for cat in categories]
-    except Exception as e:
-        logger.error("Failed to list root categories", error=str(e))
+    except Exception:
+        logger.exception("Failed to list root categories")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list root categories"
+            detail="Failed to list root categories",
         )
 
 
@@ -146,27 +151,27 @@ Get a specific category by ID.
 )
 async def get_category(
     category_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Category:
     """Get category by ID."""
     repo = CategoryRepository(db)
-    
+
     try:
         category = await repo.get(category_id)
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found"
+                detail="Category not found",
             )
-        
+
         return Category.model_validate(category)
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("Failed to get category", category_id=str(category_id), error=str(e))
+    except Exception:
+        logger.exception("Failed to get category", category_id=str(category_id))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get category"
+            detail="Failed to get category",
         )
 
 
@@ -185,27 +190,30 @@ Get a category with all its child categories loaded.
 )
 async def get_category_with_children(
     category_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> CategoryWithChildren:
     """Get category with children."""
     repo = CategoryRepository(db)
-    
+
     try:
         category = await repo.get_with_children(category_id)
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found"
+                detail="Category not found",
             )
-        
+
         return CategoryWithChildren.model_validate(category)
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("Failed to get category with children", category_id=str(category_id), error=str(e))
+    except Exception:
+        logger.exception(
+            "Failed to get category with children",
+            category_id=str(category_id),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get category with children"
+            detail="Failed to get category with children",
         )
 
 
@@ -228,43 +236,47 @@ Note: Changing the name or parent will update the path and affect all child cate
 async def update_category(
     category_id: UUID,
     category_data: CategoryUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Category:
     """Update category."""
     repo = CategoryRepository(db)
-    
+
     try:
         # Only include non-None values in update
-        update_data = {k: v for k, v in category_data.model_dump().items() if v is not None}
-        
+        update_data = {
+            k: v for k, v in category_data.model_dump().items() if v is not None
+        }
+
         if not update_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No update data provided"
+                detail="No update data provided",
             )
-        
+
         category = await repo.update(category_id, **update_data)
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found"
+                detail="Category not found",
             )
-        
+
         logger.info("Category updated", category_id=str(category_id))
         return Category.model_validate(category)
     except HTTPException:
         raise
     except ValueError as e:
-        logger.warning("Category update failed", category_id=str(category_id), error=str(e))
+        logger.warning(
+            "Category update failed", category_id=str(category_id), error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=str(e),
         )
-    except Exception as e:
-        logger.error("Failed to update category", category_id=str(category_id), error=str(e))
+    except Exception:
+        logger.exception("Failed to update category", category_id=str(category_id))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update category"
+            detail="Failed to update category",
         )
 
 
@@ -275,7 +287,8 @@ async def update_category(
     description="""
 Delete a category.
 
-Note: This will also delete all child categories and may affect products in these categories.
+Note: This will also delete all child categories and may affect products in these
+categories.
 Use with caution in production systems.
     """,
     responses={
@@ -286,25 +299,25 @@ Use with caution in production systems.
 )
 async def delete_category(
     category_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete category."""
     repo = CategoryRepository(db)
-    
+
     try:
         success = await repo.delete(category_id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found"
+                detail="Category not found",
             )
-        
+
         logger.info("Category deleted", category_id=str(category_id))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("Failed to delete category", category_id=str(category_id), error=str(e))
+    except Exception:
+        logger.exception("Failed to delete category", category_id=str(category_id))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete category"
+            detail="Failed to delete category",
         )

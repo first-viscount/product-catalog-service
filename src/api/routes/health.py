@@ -1,14 +1,14 @@
 """Health check endpoints."""
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
-from src.core.database import get_db
-from src.core.logging import get_logger
+from ...core.config import settings
+from ...core.database import get_db
+from ...core.logging import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -41,8 +41,8 @@ This endpoint is used by load balancers and monitoring systems to determine serv
                         "version": "0.1.0",
                         "database": "connected",
                         "timestamp": "2025-01-29T12:00:00Z",
-                    }
-                }
+                    },
+                },
             },
         },
         503: {
@@ -56,14 +56,14 @@ This endpoint is used by load balancers and monitoring systems to determine serv
                         "database": "disconnected",
                         "timestamp": "2025-01-29T12:00:00Z",
                         "error": "Database connection failed",
-                    }
-                }
+                    },
+                },
             },
         },
     },
     tags=["health"],
 )
-async def health_check(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+async def health_check(db: Annotated[AsyncSession, Depends(get_db)]) -> dict[str, str]:
     """Health check endpoint."""
     from datetime import UTC, datetime
 
@@ -86,15 +86,17 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
         return health_data
 
     except Exception as e:
-        error_msg = f"Database health check failed: {str(e)}"
-        logger.error("Health check failed", error=error_msg)
-        
-        health_data.update({
-            "status": "unhealthy",
-            "database": "disconnected",
-            "error": str(e),
-        })
-        
+        error_msg = f"Database health check failed: {e!s}"
+        logger.exception("Health check failed")
+
+        health_data.update(
+            {
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": str(e),
+            },
+        )
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=health_data,
@@ -127,8 +129,8 @@ Used by Kubernetes readiness probes.
                         "checks": {
                             "database": "connected",
                         },
-                    }
-                }
+                    },
+                },
             },
         },
         503: {
@@ -143,14 +145,16 @@ Used by Kubernetes readiness probes.
                             "database": "failed",
                         },
                         "error": "Database connection failed",
-                    }
-                }
+                    },
+                },
             },
         },
     },
     tags=["health"],
 )
-async def readiness_check(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def readiness_check(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
     """Readiness check endpoint."""
     checks = {}
     ready = True
@@ -167,8 +171,8 @@ async def readiness_check(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     except Exception as e:
         checks["database"] = "failed"
         ready = False
-        error = f"Database check failed: {str(e)}"
-        logger.error("Readiness check failed", error=error)
+        error = f"Database check failed: {e!s}"
+        logger.exception("Readiness check failed")
 
     response_data = {
         "ready": ready,

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     app_name: str = "product-catalog-service"
     app_version: str = "0.1.0"
-    
+
     # Server configuration
     host: str = "0.0.0.0"
     port: int = 8082
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Platform coordination
     platform_coordination_url: str = "http://localhost:8081"
-    
+
     # Event logging (for Phase 1 MVP - events are logged, not published)
     events_enabled: bool = True  # Enable/disable event logging
 

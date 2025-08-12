@@ -17,43 +17,36 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import CHAR, TypeDecorator
 
-from src.core.database import Base
-from src.core.config import settings
+from ..core.database import Base
 
 
 class GUID(TypeDecorator):
     """Platform-independent GUID type.
-    
+
     Uses PostgreSQL's UUID type when available, otherwise uses CHAR(32).
     Stores as string for SQLite compatibility in tests.
     """
+
     impl = CHAR
     cache_ok = True
 
-    def load_dialect_impl(self, dialect):
-        if dialect.name == 'postgresql':
+    def load_dialect_impl(self, dialect) -> TypeDecorator:
+        if dialect.name == "postgresql":
             return dialect.type_descriptor(UUID(as_uuid=True))
-        else:
-            return dialect.type_descriptor(CHAR(36))  # String format for SQLite
+        return dialect.type_descriptor(CHAR(36))  # String format for SQLite
 
-    def process_bind_param(self, value, dialect):
-        if value is None:
+    def process_bind_param(self, value, dialect) -> str | UUID_TYPE | None:
+        if value is None or dialect.name == "postgresql":
             return value
-        elif dialect.name == 'postgresql':
-            return value
-        else:
-            return str(value)
+        return str(value)
 
-    def process_result_value(self, value, dialect):
-        if value is None:
+    def process_result_value(self, value, dialect) -> UUID_TYPE | None:
+        if value is None or dialect.name == "postgresql":
             return value
-        elif dialect.name == 'postgresql':
-            return value
-        else:
-            return UUID_TYPE(value) if isinstance(value, str) else value
+        return UUID_TYPE(value) if isinstance(value, str) else value
 
 
 class Category(Base):
@@ -63,24 +56,30 @@ class Category(Base):
 
     # Primary identification
     id: Mapped[UUID_TYPE] = mapped_column(
-        GUID(), primary_key=True, default=uuid4
+        GUID(),
+        primary_key=True,
+        default=uuid4,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    
+
     # Hierarchical structure
     parent_id: Mapped[UUID_TYPE | None] = mapped_column(
         GUID(),
         ForeignKey("categories.id", ondelete="CASCADE"),
         nullable=True,
     )
-    path: Mapped[str] = mapped_column(String(1000), nullable=False)  # For efficient querying
+    path: Mapped[str] = mapped_column(
+        String(1000), nullable=False,
+    )  # For efficient querying
 
     # Metadata
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -91,13 +90,18 @@ class Category(Base):
 
     # Relationships
     parent: Mapped["Category | None"] = relationship(
-        "Category", remote_side=[id], back_populates="children"
+        "Category",
+        remote_side=[id],
+        back_populates="children",
     )
     children: Mapped[list["Category"]] = relationship(
-        "Category", back_populates="parent", cascade="all, delete-orphan"
+        "Category",
+        back_populates="parent",
+        cascade="all, delete-orphan",
     )
     products: Mapped[list["Product"]] = relationship(
-        "Product", back_populates="category"
+        "Product",
+        back_populates="category",
     )
 
     # Indexes for efficient queries
@@ -119,7 +123,9 @@ class Product(Base):
 
     # Primary identification
     id: Mapped[UUID_TYPE] = mapped_column(
-        GUID(), primary_key=True, default=uuid4
+        GUID(),
+        primary_key=True,
+        default=uuid4,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -136,7 +142,7 @@ class Product(Base):
         Numeric(10, 2),
         nullable=False,
         info={
-            "check_constraints": [CheckConstraint("price >= 0", name="positive_price")]
+            "check_constraints": [CheckConstraint("price >= 0", name="positive_price")],
         },
     )
 
@@ -146,7 +152,9 @@ class Product(Base):
         nullable=False,
         default=0,
         info={
-            "check_constraints": [CheckConstraint("stock_quantity >= 0", name="non_negative_stock")]
+            "check_constraints": [
+                CheckConstraint("stock_quantity >= 0", name="non_negative_stock"),
+            ],
         },
     )
 
@@ -154,11 +162,15 @@ class Product(Base):
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
 
     # Search optimization
-    search_vector: Mapped[str | None] = mapped_column(Text, nullable=True)  # For full-text search
+    search_vector: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+    )  # For full-text search
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

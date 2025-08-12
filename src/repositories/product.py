@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
-from sqlalchemy import select, or_, func
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models.product import Product, Category
-from src.repositories.base import BaseRepository
+from ..models.product import Product
+from .base import BaseRepository
 
 
 class ProductRepository(BaseRepository[Product]):
@@ -24,11 +24,11 @@ class ProductRepository(BaseRepository[Product]):
     async def create(self, **kwargs: Any) -> Product:
         """Create a new product."""
         product = Product(**kwargs)
-        
+
         # Create search vector for basic text search
         search_text = f"{product.name} {product.description or ''}"
         product.search_vector = search_text.lower()
-        
+
         self.session.add(product)
         await self.session.flush()
         await self.session.refresh(product)
@@ -86,7 +86,7 @@ class ProductRepository(BaseRepository[Product]):
         category_id: UUID | None = None,
         min_price: Decimal | None = None,
         max_price: Decimal | None = None,
-        **filters: Any
+        **filters: Any,
     ) -> list[Product]:
         """List products with pagination and filters."""
         stmt = select(Product).options(selectinload(Product.category))
@@ -118,7 +118,7 @@ class ProductRepository(BaseRepository[Product]):
         category_id: UUID | None = None,
         min_price: Decimal | None = None,
         max_price: Decimal | None = None,
-        **filters: Any
+        **filters: Any,
     ) -> int:
         """Count products with filters."""
         stmt = select(func.count(Product.id))
@@ -148,7 +148,7 @@ class ProductRepository(BaseRepository[Product]):
     ) -> list[Product]:
         """Search products by text query."""
         search_term = query.lower().strip()
-        
+
         stmt = (
             select(Product)
             .options(selectinload(Product.category))
@@ -157,7 +157,7 @@ class ProductRepository(BaseRepository[Product]):
                     Product.name.ilike(f"%{search_term}%"),
                     Product.description.ilike(f"%{search_term}%"),
                     Product.search_vector.ilike(f"%{search_term}%"),
-                )
+                ),
             )
         )
 
@@ -187,16 +187,13 @@ class ProductRepository(BaseRepository[Product]):
     ) -> int:
         """Count search results."""
         search_term = query.lower().strip()
-        
-        stmt = (
-            select(func.count(Product.id))
-            .where(
-                or_(
-                    Product.name.ilike(f"%{search_term}%"),
-                    Product.description.ilike(f"%{search_term}%"),
-                    Product.search_vector.ilike(f"%{search_term}%"),
-                )
-            )
+
+        stmt = select(func.count(Product.id)).where(
+            or_(
+                Product.name.ilike(f"%{search_term}%"),
+                Product.description.ilike(f"%{search_term}%"),
+                Product.search_vector.ilike(f"%{search_term}%"),
+            ),
         )
 
         if category_id:

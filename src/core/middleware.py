@@ -7,7 +7,7 @@ from collections.abc import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.core.logging import (
+from .logging import (
     clear_context,
     get_correlation_id,
     get_logger,
@@ -71,18 +71,16 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
             return response  # type: ignore[no-any-return]
 
-        except Exception as e:
+        except Exception:
             # Calculate duration
             duration = time.time() - start_time
 
             # Log error
-            logger.error(
+            logger.exception(
                 "request_failed",
                 method=request.method,
                 path=request.url.path,
                 duration_ms=round(duration * 1000, 2),
-                error=str(e),
-                exc_info=True,
             )
             raise
         finally:

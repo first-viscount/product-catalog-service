@@ -131,3 +131,15 @@ api-test: ## Run basic API tests against running service
 	curl -f http://localhost:8082/health/ready
 	curl -f http://localhost:8082/
 	@echo "\nAPI tests passed!"
+
+## Quality Commands (Service-Specific)
+quality-check: ## Run quality checks for this service
+	@./quality-check.sh
+
+quality-fix: ## Auto-fix quality issues in this service
+	@ruff check src tests --fix
+	@black src tests || true
+
+quality-report: ## Generate quality report for this service  
+	@./quality-check.sh
+	@echo "Report saved to: quality-report.md"

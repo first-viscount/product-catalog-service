@@ -7,21 +7,24 @@ from typing import Any
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from src.api.middleware.error_handling import (
+from .api.middleware.error_handling import (
     ErrorHandlingMiddleware,
     create_exception_handlers,
 )
-from src.api.middleware.metrics import setup_http_metrics_middleware
-from src.api.routes import health, categories, products
-from src.core.config import settings
-from src.core.database import close_db, init_db
-from src.core.logging import get_logger, setup_logging
-from src.core.middleware import LoggingMiddleware
-from src.core.metrics import service_registry, get_metrics_collector
-from src.core.background_metrics import start_background_metrics, stop_background_metrics
-from src.core.events import get_event_service, close_event_service
+from .api.middleware.metrics import setup_http_metrics_middleware
+from .api.routes import categories, health, products
+from .core.background_metrics import (
+    start_background_metrics,
+    stop_background_metrics,
+)
+from .core.config import settings
+from .core.database import close_db, init_db
+from .core.events import close_event_service, get_event_service
+from .core.logging import get_logger, setup_logging
+from .core.metrics import service_registry
+from .core.middleware import LoggingMiddleware
 
 # Setup logging
 setup_logging(
@@ -34,7 +37,7 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan management."""
     # Startup
     logger.info("Starting Product Catalog Service", version=settings.app_version)
@@ -44,45 +47,45 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             await init_db()
             logger.info("Database initialized successfully")
-        except Exception as e:
-            logger.error("Failed to initialize database", error=str(e))
+        except Exception:
+            logger.exception("Failed to initialize database")
             # In production, you might want to fail fast here
 
     # Start background metrics collection
     try:
         await start_background_metrics()
         logger.info("Background metrics collection started")
-    except Exception as e:
-        logger.error("Failed to start background metrics", error=str(e))
-    
+    except Exception:
+        logger.exception("Failed to start background metrics")
+
     # Initialize event service if enabled
     if settings.events_enabled:
         try:
             await get_event_service()
             logger.info("Event service initialized (logging mode)")
-        except Exception as e:
-            logger.error("Failed to initialize event service", error=str(e))
+        except Exception:
+            logger.exception("Failed to initialize event service")
 
     yield
 
     # Shutdown
     logger.info("Shutting down Product Catalog Service")
-    
+
     # Stop background metrics collection
     try:
         await stop_background_metrics()
         logger.info("Background metrics collection stopped")
-    except Exception as e:
-        logger.error("Failed to stop background metrics", error=str(e))
-    
+    except Exception:
+        logger.exception("Failed to stop background metrics")
+
     # Close event service
     if settings.events_enabled:
         try:
             await close_event_service()
             logger.info("Event service closed (logging mode)")
-        except Exception as e:
-            logger.error("Failed to close event service", error=str(e))
-        
+        except Exception:
+            logger.exception("Failed to close event service")
+
     if settings.database_url:
         await close_db()
 
@@ -165,7 +168,7 @@ No rate limiting is currently implemented. This will be added in future versions
                         "type": "array",
                         "items": {"type": "object"},
                         "example": [
-                            {"field": "price", "message": "Price must be positive"}
+                            {"field": "price", "message": "Price must be positive"},
                         ],
                     },
                     "timestamp": {"type": "string", "format": "date-time"},
@@ -175,7 +178,7 @@ No rate limiting is currently implemented. This will be added in future versions
                         "example": "550e8400-e29b-41d4-a716-446655440000",
                     },
                 },
-            }
+            },
         },
     }
 
@@ -241,10 +244,10 @@ Useful for quick service identification and version checking.
                         "service": "product-catalog-service",
                         "version": "0.1.0",
                         "database": "connected",
-                    }
-                }
+                    },
+                },
             },
-        }
+        },
     },
     tags=["service-info"],
 )
@@ -279,7 +282,7 @@ This endpoint provides metrics in Prometheus format for:
 
 Used by Prometheus server for scraping metrics data.
     """,
-    response_description="Prometheus metrics in text format", 
+    response_description="Prometheus metrics in text format",
     include_in_schema=False,  # Hide from OpenAPI docs
     tags=["monitoring"],
 )

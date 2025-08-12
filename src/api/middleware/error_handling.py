@@ -12,10 +12,10 @@ from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.core.config import settings
-from src.core.exceptions import PlatformCoordinationError
-from src.core.logging import log_event
-from src.core.models.errors import ErrorDetail, ErrorResponse
+from ...core.config import settings
+from ...core.exceptions import PlatformCoordinationError
+from ...core.logging import log_event
+from ...core.models.errors import ErrorDetail, ErrorResponse
 
 
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
@@ -34,7 +34,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return await self.handle_exception(request, exc)
 
     async def handle_exception(self, request: Request, exc: Exception) -> JSONResponse:
-        """Handle different types of exceptions and return appropriate error responses."""
+        """Handle different types of exceptions and return appropriate responses."""
         # Get logger and correlation ID from request state
         logger = getattr(request.state, "logger", None)
         correlation_id = getattr(request.state, "correlation_id", None)
@@ -48,7 +48,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             error_response = self._handle_http_exception(exc, request, correlation_id)
         elif isinstance(exc, PydanticValidationError):
             error_response = self._handle_pydantic_validation_error(
-                exc, request, correlation_id
+                exc,
+                request,
+                correlation_id,
             )
         else:
             error_response = self._handle_unexpected_error(exc, request, correlation_id)
@@ -210,7 +212,10 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
         return error_response
 
     def _handle_unexpected_error(
-        self, exc: Exception, request: Request, correlation_id: str | None
+        self,
+        exc: Exception,
+        request: Request,
+        correlation_id: str | None,
     ) -> ErrorResponse:
         """Handle unexpected errors."""
         # In production, hide internal details
@@ -264,7 +269,8 @@ def create_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
+        request: Request,
+        exc: RequestValidationError,
     ) -> JSONResponse:
         """Handle request validation errors."""
         middleware = ErrorHandlingMiddleware(app)
@@ -272,7 +278,8 @@ def create_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(
-        request: Request, exc: HTTPException
+        request: Request,
+        exc: HTTPException,
     ) -> JSONResponse:
         """Handle HTTP exceptions."""
         middleware = ErrorHandlingMiddleware(app)

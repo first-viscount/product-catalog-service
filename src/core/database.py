@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-from src.core.config import settings
-from src.core.logging import get_logger
+from .config import settings
+from .logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,7 @@ async_session = async_sessionmaker(
 Base = declarative_base()
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """Dependency to get database session."""
     async with async_session() as session:
         try:
@@ -52,26 +52,47 @@ def _update_pool_metrics() -> None:
     """Update database connection pool metrics."""
     try:
         # Import here to avoid circular imports
-        from src.core.metrics import get_metrics_collector
-        
+        from .metrics import get_metrics_collector
+
         metrics = get_metrics_collector()
-        
+
         # Get pool statistics if available
         if hasattr(engine, "pool"):
             pool = engine.pool
-            # Check if pool has size() method (NullPool doesn't have these methods)
-            if hasattr(pool, 'size') and hasattr(pool, 'checkedout') and hasattr(pool, 'overflow'):
-                metrics.update_db_pool_metrics(
-                    pool_size=pool.size(),
-                    checked_out=pool.checkedout(),
-                    overflow=pool.overflow(),
+            # Check if pool has the required metrics methods
+            # QueuePool and AsyncAdaptedQueuePool have these, but NullPool and StaticPool don't
+            if all(
+                hasattr(pool, method) for method in ("size", "checkedout", "overflow")
+            ):
+                try:
+                    # Call methods safely - they should not raise exceptions for valid pools
+                    pool_size = pool.size()  # type: ignore[attr-defined]
+                    checked_out = pool.checkedout()  # type: ignore[attr-defined]
+                    overflow = pool.overflow()  # type: ignore[attr-defined]
+                    metrics.update_db_pool_metrics(
+                        pool_size=pool_size,
+                        checked_out=checked_out,
+                        overflow=overflow,
+                    )
+                except (AttributeError, TypeError):
+                    # Handle case where methods exist but aren't callable or have wrong signature
+                    logger.debug("Pool metrics methods are not callable", exc_info=True)
+            else:
+                # Pool doesn't support metrics (e.g., NullPool)
+                logger.debug(
+                    "Pool type %s does not support metrics collection",
+                    type(pool).__name__,
                 )
-    except Exception as e:
-        logger.debug("Could not update pool metrics", error=str(e))
+    except ImportError:
+        # Metrics module not available
+        logger.debug("Metrics collector not available")
+    except Exception:  # pylint: disable=broad-exception-caught
+        # Catch any other unexpected errors
+        logger.debug("Could not update pool metrics", exc_info=True)
 
 
 @asynccontextmanager
-async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
+async def get_db_context() -> AsyncGenerator[AsyncSession]:
     """Context manager to get database session."""
     async with async_session() as session:
         try:
@@ -91,8 +112,8 @@ async def init_db() -> None:
             # In production, use Alembic migrations instead
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
+    except Exception:
+        logger.exception("Failed to initialize database")
         raise
 
 
